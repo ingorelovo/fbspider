@@ -12,18 +12,20 @@ import (
 	"github.com/tebeka/selenium/chrome"
 )
 
-// Start a Selenium WebDriver server instance (if one is not already
-// running).
-// Start a Selenium WebDriver server instance (if one is not already
-// running).
 const (
+	// These paths will be different on your system.
+	port          = 8080
+	timeDelta     = time.Second * 5
 	registerIndex = "https://m.myweimai.com/wx/dc_register_service.html"
 	loginIndex    = "https://m.myweimai.com/account/login.html"
 	bookIndex     = "https://m.myweimai.com/wx/yb_book_new.html?from=doctor"
-	// dockerId = "1483650534593388545" // 九价疫苗的
-	dockerID = "1367092118308483072" // 普通门诊的url
-	myPhone  = "xxxxxxxx"            // 普通门诊的url
-	name     = "陈超"
+	dockerID      = "1483650534593388545" // 九价疫苗的
+	// dockerID = "1367092118308483072" // 普通门诊的url
+
+)
+
+var (
+	myPhone, name, seleniumPath string
 )
 
 func findOrderIcon(wd selenium.WebDriver) (bool, error) {
@@ -100,37 +102,122 @@ func login(wd selenium.WebDriver) error {
 	}
 	return nil
 }
+
+func loadPatientOk(wd selenium.WebDriver) (bool, error) {
+	elemt, err := wd.FindElement(selenium.ByCSSSelector, ".list-group.book-info")
+	if err != nil {
+		return false, err
+	}
+	elemts, err := elemt.FindElements(selenium.ByCSSSelector, ".list-item")
+
+	if err != nil {
+		return false, err
+	}
+
+	txt, err := elemts[0].Text()
+
+	if err != nil {
+		return false, err
+	}
+
+	if strings.Contains(txt, "请选择家庭成员") {
+		return false, err
+	}
+
+	return true, err
+}
 func chooicePatient(wd selenium.WebDriver) error {
+
 	fmt.Println("开始选择病人")
 	elemt, err := wd.FindElement(selenium.ByCSSSelector, ".list-group.book-info")
 	if err != nil {
 		return err
 	}
+	if err := wd.Wait(loadPatientOk); err != nil {
+		return nil
+	}
+
 	elems, err := elemt.FindElements(selenium.ByCSSSelector, ".list-item")
 	if err != nil {
 		return err
 	}
-	// 0 就诊人， 1 就诊卡 ， 2 就诊费用，3 支付方式
-	if err := elems[0].Click(); err != nil {
 
+	// 0 就诊人， 1 就诊卡 ， 2 就诊费用，3 支付方式
+	patientBtn, err := elems[0].FindElement(selenium.ByCSSSelector, ".right")
+	if err != nil {
+		return err
 	}
-	return nil
+	err = patientBtn.Click()
+	if err != nil {
+		return err
+	}
+
+	panelBody, err := wd.FindElement(selenium.ByClassName, "panel-body")
+	if err != nil {
+		return err
+	}
+
+	elemts, err := panelBody.FindElements(selenium.ByTagName, "li")
+	if err != nil {
+		return err
+	}
+
+	for _, e := range elemts {
+		txt, _ := e.Text()
+		txt = strings.TrimSpace(txt)
+		if txt == name {
+			fmt.Println("你选择的病人为: ", txt)
+			return e.Click()
+
+		}
+	}
+	fmt.Println("你选择的病人为当一个")
+	return elemts[0].Click()
+}
+
+func checkName() {
+	if name == "" {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("请输入姓名, 并按enter: ")
+		yourName, _ := reader.ReadString('\n')
+		name = strings.TrimSpace(yourName)
+	}
+}
+
+func checkPhone() {
+	if myPhone == "" {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("请输入手机号, 并按enter: ")
+		phone, _ := reader.ReadString('\n')
+		myPhone = strings.TrimSpace(phone)
+	}
+}
+
+func checkWebDriver() {
+	if seleniumPath == "" {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("请输入chromedriver路径, 并按enter: ")
+		myPath, _ := reader.ReadString('\n')
+		seleniumPath = strings.TrimSpace(myPath)
+	}
+	if _, err := os.Stat(seleniumPath); os.IsNotExist(err) {
+		panic(err)
+	}
 }
 
 func main() {
+	checkName()
+	checkPhone()
+	checkWebDriver()
+	// "/usr/local/bin/chromedriver"
 
-	const (
-		// These paths will be different on your system.
-		seleniumPath = "/usr/local/bin/chromedriver"
-		port         = 8080
-	)
 	// opts := []selenium.ServiceOption{
 	// 	selenium.StartFrameBuffer(),           // Start an X frame buffer for the browser to run in.
 	// 	selenium.GeckoDriver(geckoDriverPath), // Specify the path to GeckoDriver in order to use Firefox.
 	// 	selenium.Output(os.Stderr),            // Output debug information to STDERR.
 	// }
 	opts := []selenium.ServiceOption{}
-	selenium.SetDebug(true)
+	selenium.SetDebug(false)
 	service, err := selenium.NewChromeDriverService(seleniumPath, port, opts...)
 	if err != nil {
 		panic(err) // panic is used only as an example and is not otherwise recommended.
@@ -173,12 +260,12 @@ func main() {
 	for strings.HasPrefix(currentURL, loginIndex) {
 		err = login(wd)
 		if err != nil {
-			fmt.Println("retry after 0.1s")
-			time.Sleep(time.Second * 5)
+			fmt.Printf("登陆失败，在%s后重试\r\n", timeDelta)
+			time.Sleep(timeDelta)
 		}
 		if newURL, err := wd.CurrentURL(); err != nil {
-			fmt.Println("retry after 0.1s")
-			time.Sleep(time.Second * 5)
+			fmt.Printf("登陆失败，在%s后重试\r\n", timeDelta)
+			time.Sleep(timeDelta)
 		} else {
 			currentURL = newURL
 		}
@@ -189,91 +276,44 @@ func main() {
 	if err := wd.Wait(findOrderIcon); err != nil {
 		panic(err)
 	}
-	// Get a order list
-	elements, err := wd.FindElements(selenium.ByCSSSelector, ".cir--base.cir--active")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(len(elements))
+	// 一把死循环各种调用各种跑
+	for {
+		elements, _ := wd.FindElements(selenium.ByCSSSelector, ".cir--base.cir--active")
+		if len(elements) == 0 {
+			fmt.Printf("没有可以预约的窗口，在%s后重试\r\n", timeDelta)
+			time.Sleep(timeDelta)
+			wd.Refresh()
+		} else {
+			elem := elements[0]
+			txt, err := elem.Text()
 
-	elem := elements[0]
-	txt, err := elem.Text()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("按钮的文本为: ", txt)
-	// click the first book order
-	if err := elem.Click(); err != nil {
-		panic(err)
-	}
-	currentURL, err = wd.CurrentURL()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("current url: ", currentURL)
-	if currentURL == bookIndex {
-		if err := chooicePatient(wd); err != nil {
-			panic(err)
+			if err != nil {
+				continue
+			}
+
+			fmt.Println("按钮的文本为: ", txt)
+			// click the first book order
+
+			if err := elem.Click(); err != nil {
+				continue
+			}
+
+			currentURL, err = wd.CurrentURL()
+
+			if err != nil {
+				continue
+			}
+
+			fmt.Println("当前网址为: ", currentURL)
+
+			if currentURL == bookIndex {
+				if err := chooicePatient(wd); err != nil {
+					continue
+				}
+			}
+			// 全部成功，break
+			break
 		}
 	}
 	// this channel forever only for block the main go routine stop
-	forever := make(chan bool)
-
-	<-forever
-	// // Get a reference to the text box containing code.
-	// elem, err := wd.FindElement(selenium.ByCSSSelector, "#code")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// // Remove the boilerplate code already in the text box.
-	// if err := elem.Clear(); err != nil {
-	// 	panic(err)
-	// }
-
-	// // Enter some new code in text box.
-	// err = elem.SendKeys(`
-	// 	package main
-	// 	import "fmt"
-
-	// 	func main() {
-	// 		fmt.Println("Hello WebDriver!\n")
-	// 	}
-	// `)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Click the run button.
-	// btn, err := wd.FindElement(selenium.ByCSSSelector, "#run")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// if err := btn.Click(); err != nil {
-	// 	panic(err)
-	// }
-
-	// // Wait for the program to finish running and get the output.
-	// outputDiv, err := wd.FindElement(selenium.ByCSSSelector, "#output")
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// var output string
-	// for {
-	// 	output, err = outputDiv.Text()
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	if output != "Waiting for remote server..." {
-	// 		break
-	// 	}
-	// 	time.Sleep(time.Millisecond * 100)
-	// }
-
-	// fmt.Printf("%s", strings.Replace(output, "\n\n", "\n", -1))
-
-	// // Example Output:
-	// // Hello WebDriver!
-	// //
-	// // Program exited.
 }
