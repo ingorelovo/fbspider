@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/tebeka/selenium"
@@ -206,6 +208,10 @@ func checkWebDriver() {
 }
 
 func main() {
+
+	killSignal := make(chan os.Signal, 1)
+	signal.Notify(killSignal, os.Interrupt, syscall.SIGTERM)
+
 	checkName()
 	checkPhone()
 	checkWebDriver()
@@ -243,6 +249,7 @@ func main() {
 		panic(err)
 	}
 	defer wd.Quit()
+	defer wd.Close()
 
 	// Navigate to the simple playground interface.
 	encodedURL := url.PathEscape(fmt.Sprintf("%s?doctorId=%s", registerIndex, dockerID))
@@ -277,43 +284,48 @@ func main() {
 		panic(err)
 	}
 	// 一把死循环各种调用各种跑
-	for {
-		elements, _ := wd.FindElements(selenium.ByCSSSelector, ".cir--base.cir--active")
-		if len(elements) == 0 {
-			fmt.Printf("没有可以预约的窗口，在%s后重试\r\n", timeDelta)
-			time.Sleep(timeDelta)
-			wd.Refresh()
-		} else {
-			elem := elements[0]
-			txt, err := elem.Text()
+	go func() {
+		for {
+			elements, _ := wd.FindElements(selenium.ByCSSSelector, ".cir--base.cir--active")
+			if len(elements) == 0 {
+				fmt.Printf("没有可以预约的窗口，在%s后重试\r\n", timeDelta)
+				time.Sleep(timeDelta)
+				wd.Refresh()
+			} else {
+				elem := elements[0]
+				txt, err := elem.Text()
 
-			if err != nil {
-				continue
-			}
-
-			fmt.Println("按钮的文本为: ", txt)
-			// click the first book order
-
-			if err := elem.Click(); err != nil {
-				continue
-			}
-
-			currentURL, err = wd.CurrentURL()
-
-			if err != nil {
-				continue
-			}
-
-			fmt.Println("当前网址为: ", currentURL)
-
-			if currentURL == bookIndex {
-				if err := chooicePatient(wd); err != nil {
+				if err != nil {
 					continue
 				}
+
+				fmt.Println("按钮的文本为: ", txt)
+				// click the first book order
+
+				if err := elem.Click(); err != nil {
+					continue
+				}
+
+				currentURL, err = wd.CurrentURL()
+
+				if err != nil {
+					continue
+				}
+
+				fmt.Println("当前网址为: ", currentURL)
+
+				if currentURL == bookIndex {
+					if err := chooicePatient(wd); err != nil {
+						continue
+					}
+				}
+				// 全部成功，break
+				break
 			}
-			// 全部成功，break
-			break
 		}
-	}
+	}()
 	// this channel forever only for block the main go routine stop
+	<-killSignal
+
+	fmt.Println("退出再见，拜拜")
 }
