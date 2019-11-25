@@ -22,7 +22,7 @@ const (
 	bookIndex     = "https://m.myweimai.com/wx/yb_book_new.html?from=doctor"
 	// dockerId = "1483650534593388545" // 九价疫苗的
 	dockerID = "1367092118308483072" // 普通门诊的url
-	myPhone  = "15267040566"         // 普通门诊的url
+	myPhone  = "xxxxxxxx"            // 普通门诊的url
 	name     = "陈超"
 )
 
@@ -112,7 +112,7 @@ func chooicePatient(wd selenium.WebDriver) error {
 	}
 	// 0 就诊人， 1 就诊卡 ， 2 就诊费用，3 支付方式
 	if err := elems[0].Click(); err != nil {
-		
+
 	}
 	return nil
 }
