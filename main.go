@@ -1,3 +1,4 @@
+// https://www.w3schools.com/cssref/css_selectors.asp
 package main
 
 import (
@@ -7,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/tebeka/selenium"
@@ -19,7 +19,7 @@ const (
 	port          = 8080
 	timeDelta     = time.Second * 5
 	registerIndex = "https://m.myweimai.com/wx/dc_register_service.html"
-	loginIndex    = "https://m.myweimai.com/account/login.html"
+	loginIndex    = "https://m.myweimai.com/account/login.html?loginType=password"
 	bookIndex     = "https://m.myweimai.com/wx/yb_book_new.html?from=doctor"
 	dockerID      = "1483650534593388545" // 九价疫苗的
 	// dockerID = "1367092118308483072" // 普通门诊的url
@@ -27,11 +27,24 @@ const (
 )
 
 var (
-	myPhone, name, seleniumPath string
+	name         = "阮佩悦"
+	myPhone      = "15267040566"
+	seleniumPath = "/usr/local/bin/chromedriver"
+	password     = "123456"
 )
 
 func findOrderIcon(wd selenium.WebDriver) (bool, error) {
 	elements, err := wd.FindElements(selenium.ByCSSSelector, ".cir--base")
+	if err != nil {
+		return false, err
+	} else if len(elements) > 0 {
+		return true, err
+	}
+	return false, err
+}
+
+func findActiveOrderIcon(wd selenium.WebDriver) (bool, error) {
+	elements, err := wd.FindElements(selenium.ByCSSSelector, ".cir--base.cir--active")
 	if err != nil {
 		return false, err
 	} else if len(elements) > 0 {
@@ -50,6 +63,59 @@ func captchaUnlock(wd selenium.WebDriver) (bool, error) {
 		return false, err
 	}
 
+}
+
+func loginOk(wd selenium.WebDriver) (bool, error) {
+	currentURL, err := wd.CurrentURL()
+	if err != nil {
+		return false, err
+	} else if !strings.HasPrefix(currentURL, loginIndex) {
+		return true, err
+	} else {
+		return false, err
+	}
+
+}
+
+func pwdLogin(wd selenium.WebDriver) error {
+	fmt.Println("页面需要登陆")
+	phoneElem, err := wd.FindElement(selenium.ByCSSSelector, ".phone")
+
+	if err != nil {
+		return nil
+	}
+	phoneElem.Clear()
+	err = phoneElem.SendKeys(myPhone)
+	if err != nil {
+		return err
+	}
+
+	pwdElem, err := wd.FindElement(selenium.ByCSSSelector, ".password")
+	if err != nil {
+		return err
+	}
+	if err := pwdElem.Clear(); err != nil {
+		return err
+	}
+
+	err = pwdElem.SendKeys(password)
+	if err != nil {
+		return err
+	}
+	fmt.Println("数据密码登陆")
+	loginBtn, err := wd.FindElement(selenium.ByCSSSelector, ".login")
+	if err != nil {
+		return err
+	}
+	err = loginBtn.Click()
+	if err != nil {
+		return err
+	}
+	if err = wd.Wait(loginOk); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func login(wd selenium.WebDriver) error {
@@ -102,6 +168,7 @@ func login(wd selenium.WebDriver) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -123,13 +190,104 @@ func loadPatientOk(wd selenium.WebDriver) (bool, error) {
 	}
 
 	if strings.Contains(txt, "请选择家庭成员") {
-		return false, err
+		return true, err
 	}
 
 	return true, err
 }
-func chooicePatient(wd selenium.WebDriver) error {
 
+func patientCardOk(wd selenium.WebDriver) (bool, error) {
+	elemt, err := wd.FindElement(selenium.ByCSSSelector, ".list-group.book-info")
+	if err != nil {
+		return false, err
+	}
+	elemts, err := elemt.FindElements(selenium.ByCSSSelector, ".list-item")
+
+	if err != nil {
+		return false, err
+	}
+
+	elemt, err = elemts[1].FindElement(selenium.ByCSSSelector, ".right")
+	if err != nil {
+		return false, err
+	}
+	txt, err := elemt.Text()
+	if err != nil {
+		return false, err
+	}
+	fmt.Println(txt)
+	if strings.HasPrefix(txt, "就诊卡") {
+		return true, err
+	}
+	return false, err
+}
+func inCashURL(wd selenium.WebDriver) (bool, error) {
+	url, err := wd.CurrentURL()
+	if err != nil {
+		return false, err
+	}
+	if strings.Contains(url, "cashier") {
+		return true, nil
+	}
+	return false, nil
+}
+
+func payBtnOK(wd selenium.WebDriver) (bool, error) {
+	_, err := wd.FindElement(selenium.ByClassName, "#addBtn2 > button")
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func timeCardOk(wd selenium.WebDriver) (bool, error) {
+	elemt, err := wd.FindElement(selenium.ByCSSSelector, ".list-group.book-time")
+	if err != nil {
+		return false, err
+	}
+	elemts, err := elemt.FindElements(selenium.ByCSSSelector, ".list-item")
+
+	if err != nil {
+		return false, err
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	var elem selenium.WebElement
+	for _, e := range elemts {
+		txt, _ := e.Text()
+		if strings.Contains(txt, "就诊号") {
+			elem = e
+		}
+	}
+	if elem != nil {
+		btn, err := elem.FindElement(selenium.ByCSSSelector, ".right")
+		if err != nil {
+			return false, err
+		}
+		txt, err := btn.Text()
+		if err != nil {
+			return false, err
+		}
+		if txt == "请选择预约时段" {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func chooseTime(wd selenium.WebDriver) error {
+	fmt.Println("开始就诊时间")
+	if err := wd.WaitWithTimeout(timeCardOk, time.Millisecond*500); err != nil {
+		wd.Refresh()
+		chooseTime(wd)
+	}
+	return nil
+}
+
+func choosePaient(wd selenium.WebDriver) error {
 	fmt.Println("开始选择病人")
 	elemt, err := wd.FindElement(selenium.ByCSSSelector, ".list-group.book-info")
 	if err != nil {
@@ -170,52 +328,26 @@ func chooicePatient(wd selenium.WebDriver) error {
 		if txt == name {
 			fmt.Println("你选择的病人为: ", txt)
 			return e.Click()
-
 		}
 	}
 	fmt.Println("你选择的病人为当一个")
 	return elemts[0].Click()
 }
 
-func checkName() {
-	if name == "" {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("请输入姓名, 并按enter: ")
-		yourName, _ := reader.ReadString('\n')
-		name = strings.TrimSpace(yourName)
-	}
-}
-
-func checkPhone() {
-	if myPhone == "" {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("请输入手机号, 并按enter: ")
-		phone, _ := reader.ReadString('\n')
-		myPhone = strings.TrimSpace(phone)
-	}
-}
-
-func checkWebDriver() {
-	if seleniumPath == "" {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("请输入chromedriver路径, 并按enter: ")
-		myPath, _ := reader.ReadString('\n')
-		seleniumPath = strings.TrimSpace(myPath)
-	}
-	if _, err := os.Stat(seleniumPath); os.IsNotExist(err) {
-		panic(err)
-	}
-}
+var exitCh = make(chan struct{})
 
 func main() {
 
 	killSignal := make(chan os.Signal, 1)
-	signal.Notify(killSignal, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(killSignal, os.Interrupt)
 
-	checkName()
-	checkPhone()
-	checkWebDriver()
-	// "/usr/local/bin/chromedriver"
+	go func() {
+		select {
+		case <-killSignal:
+			fmt.Println("exit the code")
+			os.Exit(0)
+		}
+	}()
 
 	// opts := []selenium.ServiceOption{
 	// 	selenium.StartFrameBuffer(),           // Start an X frame buffer for the browser to run in.
@@ -223,7 +355,7 @@ func main() {
 	// 	selenium.Output(os.Stderr),            // Output debug information to STDERR.
 	// }
 	opts := []selenium.ServiceOption{}
-	selenium.SetDebug(false)
+	selenium.SetDebug(true)
 	service, err := selenium.NewChromeDriverService(seleniumPath, port, opts...)
 	if err != nil {
 		panic(err) // panic is used only as an example and is not otherwise recommended.
@@ -253,7 +385,94 @@ func main() {
 
 	// Navigate to the simple playground interface.
 	encodedURL := url.PathEscape(fmt.Sprintf("%s?doctorId=%s", registerIndex, dockerID))
-	loginURL := fmt.Sprintf("%s?redirect=%s", loginIndex, encodedURL)
+	loginURL := fmt.Sprintf("%s&redirect=%s", loginIndex, encodedURL)
+	ch2 := make(chan int)
+
+	go func(ch <-chan int) {
+		<-ch
+
+		for {
+			if err := wd.WaitWithTimeout(findActiveOrderIcon, time.Second); err == nil {
+				elements, err := wd.FindElements(selenium.ByCSSSelector, ".cir--base.cir--active")
+
+				if err != nil {
+					continue
+				}
+				if len(elements) == 0 {
+					wd.Refresh()
+					time.Sleep(time.Millisecond)
+					continue
+				}
+
+				elem := elements[0]
+
+				if err := elem.Click(); err != nil {
+					continue
+				}
+
+				currentURL, err := wd.CurrentURL()
+
+				if err != nil {
+					continue
+				}
+
+				fmt.Println("当前网址为: ", currentURL)
+
+				if currentURL == bookIndex {
+
+					if err := chooseTime(wd); err != nil {
+						fmt.Println("选择时间错误", err)
+						continue
+					}
+
+					if err := choosePaient(wd); err != nil {
+						continue
+					}
+				}
+				if err = wd.Wait(patientCardOk); err != nil {
+					continue
+				}
+				if err := chooseTime(wd); err != nil {
+					continue
+				}
+
+				btn, err := wd.FindElement(selenium.ByCSSSelector, ".btn-book")
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				err = btn.Click()
+				// 全部成功，break
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+
+				if err = wd.Wait(inCashURL); err != nil {
+					continue
+				}
+
+				if err = wd.Wait(payBtnOK); err != nil {
+					continue
+				}
+
+				payBtn, err := wd.FindElement(selenium.ByCSSSelector, "#addBtn2 > button")
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				if txt, err := payBtn.Text(); err != nil {
+					continue
+				} else {
+					fmt.Println(txt)
+				}
+				payBtn.Click()
+				time.Sleep(timeDelta)
+				fmt.Println("全部ok")
+				break
+			}
+		}
+	}(ch2)
 
 	if err := wd.Get(loginURL); err != nil {
 		panic(err)
@@ -264,15 +483,16 @@ func main() {
 		panic(err)
 	}
 
-	for strings.HasPrefix(currentURL, loginIndex) {
-		err = login(wd)
+	for {
+		if !strings.HasPrefix(currentURL, loginIndex) {
+			break
+		}
+		err = pwdLogin(wd)
 		if err != nil {
 			fmt.Printf("登陆失败，在%s后重试\r\n", timeDelta)
-			time.Sleep(timeDelta)
 		}
 		if newURL, err := wd.CurrentURL(); err != nil {
 			fmt.Printf("登陆失败，在%s后重试\r\n", timeDelta)
-			time.Sleep(timeDelta)
 		} else {
 			currentURL = newURL
 		}
@@ -280,52 +500,23 @@ func main() {
 	}
 
 	// Waiting until login
-	if err := wd.Wait(findOrderIcon); err != nil {
-		panic(err)
-	}
-	// 一把死循环各种调用各种跑
-	go func() {
-		for {
-			elements, _ := wd.FindElements(selenium.ByCSSSelector, ".cir--base.cir--active")
-			if len(elements) == 0 {
-				fmt.Printf("没有可以预约的窗口，在%s后重试\r\n", timeDelta)
-				time.Sleep(timeDelta)
-				wd.Refresh()
-			} else {
-				elem := elements[0]
-				txt, err := elem.Text()
+	fmt.Println("没有找到order的按钮", time.Millisecond, "后重试")
 
-				if err != nil {
-					continue
-				}
-
-				fmt.Println("按钮的文本为: ", txt)
-				// click the first book order
-
-				if err := elem.Click(); err != nil {
-					continue
-				}
-
-				currentURL, err = wd.CurrentURL()
-
-				if err != nil {
-					continue
-				}
-
-				fmt.Println("当前网址为: ", currentURL)
-
-				if currentURL == bookIndex {
-					if err := chooicePatient(wd); err != nil {
-						continue
-					}
-				}
-				// 全部成功，break
-				break
-			}
+	for {
+		if err := wd.WaitWithTimeout(findActiveOrderIcon, time.Second); err != nil {
+			fmt.Println("没有找到order的按钮", time.Millisecond, "后重试")
+			wd.Refresh()
+			time.Sleep(time.Millisecond)
+		} else {
+			break
 		}
-	}()
-	// this channel forever only for block the main go routine stop
-	<-killSignal
+	}
 
+	ch2 <- 1
+
+	// 一把死循环各种调用各种跑
+
+	// this channel forever only for block the main go routine stop
+	<-exitCh
 	fmt.Println("退出再见，拜拜")
 }
