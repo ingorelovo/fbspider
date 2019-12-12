@@ -27,8 +27,8 @@ const (
 )
 
 var (
-	name         = "阮佩悦"
-	myPhone      = "15267040566"
+	name         = ""
+	myPhone      = ""
 	seleniumPath = "/usr/local/bin/chromedriver"
 	password     = "123456"
 )
